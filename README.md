@@ -5,9 +5,9 @@ You specify:
   - how much memory to use
     (and defaults per job) 
 
-The SJQ will open a socket to accept job requests. The protocol for these
+The SJQ will open a UNIX socket to accept job requests. The protocol for these
 requests is a simple text-based protocol. By default, this socket will be
-located in $HOME/.mvsjq.sock. Jobs will run under the credentials of the 
+located in `$HOME/.sjq.sock`. Jobs will run under the credentials of the 
 running user. When there are no more jobs, SJQ will wait for $TIMEOUT
 seconds (default: 60). If there are still no jobs, then it will shut itself
 down.
@@ -17,7 +17,7 @@ can  specify an absolute path for the socket, and the SJQ will run the jobs
 whatever account has started the daemon. You can also run the daemon as root
 and it will run the jobs as the UID/GID of the submitting user. However, if
 you *really* want to do this, please consider a different scheduler, such as
-Open Grid Engine, PBS, or SLURM. SJQ was designed to make it easier to run
+Open Grid Engine/SGE, PBS, or SLURM. SJQ was designed to make it easier to run
 multi-task pipelines on a single server that didn't already have a job
 scheduler installed. It should be used sparingly!
 
@@ -30,25 +30,20 @@ attempt to run the next available job.
 
 Configuration
 -------------
-You can set various default values in the $HOME/.sjqrc file. The config
+You can set various default values in the `$HOME/.sjqrc` file. The config
 values that are relevant to SJQ are:
 
-sjq.socket=path-to-file           default: $HOME/.sjq.sock
-sjq.log=path-to-logfile           default: none
-sjq.daemonize=[TF]                default: F
-sjq.autoshutdown=[TF]             default: T
-sjq.waittime=value-in-seconds     default: 60
-sjq.maxjobs=max-jobs-to-keep      default: 10000
-sjq.maxprocs=max-procs            default: total CPUs in system
-sjq.maxmem=max-mem (ex: 8M, 2G)   default: None (memory use not restricted)
+    sjq.socket=path-to-file           default: $HOME/.sjq.sock
+    sjq.log=path-to-logfile           default: none
+    sjq.daemonize=[TF]                default: F
+    sjq.autoshutdown=[TF]             default: T
+    sjq.waittime=value-in-seconds     default: 60
+    sjq.maxprocs=max-procs            default: total CPUs in system
+    sjq.maxmem=max-mem (ex: 8M, 2G)   default: None (memory use not restricted)
 
-sjq.defaults.procs=num            default: 1
-sjq.defaults.mem=mem-per-job      default: 2G
+    sjq.defaults.procs=num            default: 1
+    sjq.defaults.mem=mem-per-job      default: 2G
 
-Note: maxjobs is the number of jobs that will be kept in memory, including any
-      jobs that have finished. If the length of the job queue reaches maxjobs,
-      any completed jobs will be removed from the queue. If there still is not
-      enough room, then no more jobs can be submitted to the queue.
 
 Protocol
 --------
@@ -56,12 +51,12 @@ Protocol
 To check the connection: 
 
     send: PING\r\n
-    recv: PONG\r\n
+    recv: OK PONG\r\n
 
 To close the connection: 
 
     send: EXIT\r\n
-    recv: BYE\r\n
+    recv: OK BYE\r\n
 
 To submit a job:
 
@@ -98,7 +93,8 @@ To submit a job:
       NAME a human-readable name for the job (not required)
 
       UID/GID the uid/gid to run this job under - this only works when SJQ is
-              started by root and is *not* recommended
+              running as root and is *not* recommended (this is a large security
+              hole, so you should only do this if you know what you are doing)
 
 
 To kill a job:
@@ -112,12 +108,15 @@ To stop the server:
     send: SHUTDOWN\r\n
     recv: OK\r\n
 
+    Note: this implies "EXIT"
+
 To list job status:
 
     send: STATUS {JOBID}\r\n
-    recv: JOBID\tJOBNAME\t[RQHSFAK]\tDEPENDS\r\n
+    recv: OK bytes\r\n
+    recv: <bytes of status message>
+          JOBID\tJOBNAME\t[RQHSFAK]\tDEPENDS\r\n
           (one line for each job)
-    recv: OK\r\n
 
 If "JOBID" is not given, then all jobs, including jobs that have finished
 (successfully or not) will be listed.

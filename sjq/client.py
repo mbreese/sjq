@@ -1,36 +1,65 @@
 import os
+import sys
 import socket
 import sjq.config
 
 config = sjq.config.load_config()
 
-class SQJClient(object):
-    def __init__(self):
+class SJQClient(object):
+    def __init__(self, verbose=False):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.connect(config['sjq.socket'])
+        self.sock.settimeout(30.0)
+
+        self.verbose = verbose
+        self._closed = False
+
+    def readline(self):
+        s = ""
+        while not s or s[-1] != '\n':
+            ch = self.sock.recv(1)
+            if not ch:
+                break
+            s += ch
+
+        if self.verbose:
+            sys.stderr.write("<<< %s\n" % (s.replace('\n', '\\n').replace('\r', '\\r')))
+
+        return s.rstrip()
 
     def sendrecv(self, msg):
-        # Connect to server and send data
+        if self.verbose:
+            sys.stderr.write(">>> %s\n" % msg)
+
+        # send data
         self.sock.sendall("%s\r\n" % msg)
 
-        # Receive data from the server and shut down
-        buf = self.sock.recv(1024)
-        result = buf
-        while len(buf) > 0:
-            buf = self.sock.recv(1024)
-            result += buf
-
-        return result.strip()
+        # Receive response
+        line = self.readline()
+        resp = line
+        while line and line[:2] != "OK" and line[:5] != "ERROR":
+            line = self.readline()
+            resp += line
+        return resp
 
     def close(self):
-        self.sendrecv("EXIT")
+        if not self._closed:
+            self.sendrecv("EXIT")
+            self.sock.close()
 
     def shutdown(self):
-        return self.sendrecv("SHUTDOWN")
+        ret = self.sendrecv("SHUTDOWN")
+        self._closed = True
+        self.sock.close()
+        return ret
 
 
-    def status(self, jobid):
-        return self.sendrecv("STATUS %s" % jobid)
+    def status(self, jobid=None):
+        if jobid:
+            return self.sendrecv("STATUS %s" % jobid)
+        else:
+            return self.sendrecv("STATUS")
+
 
     def submit(self, src, procs=None, mem=None, stderr=None, stdout=None, env=False, cwd=None, name=None, uid=None, gid=None):
         if env:

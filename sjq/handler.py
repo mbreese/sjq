@@ -1,30 +1,64 @@
 import os
+import time
+import socket
 import SocketServer
 
 
 class SJQHandler(SocketServer.BaseRequestHandler):
     def readline(self):
         s = ""
+        start = time.time()
         while not s or s[-1] != '\n':
-            ch = self.request.recv(1)
-            s += ch
-        return s.rstrip()
+            try:
+                ch = self.request.recv(1)
+                if ch:
+                    start = time.time()
+                    s += ch
+            except socket.timeout:
+                print "Timeout..."
+                return None
+            except socket.error, e:
+                if e.args[0] == 35:
+                    now = time.time()
+                    if now - start < 30:
+                        time.sleep(0.1)
+                    else:
+                        print "Timeout..."
+                        return None
+                else:
+                    print e
+                    return None
+
+        print "<<< %s" % (s.replace('\n', '\\n').replace('\r', '\\r'))
+
+        return s.rstrip('\r\n')
 
     def handle(self):
         exit = False
         while not exit:
             line = self.readline()
+            if not line:
+                break
+
             spl = line.split(' ', 1)
             action = spl[0].upper()
 
-            if (action == 'SHUTDOWN'):
-                self.shutdown()
-            if (action == 'STATUS'):
-                self.status(spl[1] if len(spl) > 1 else None)
-            if (action == 'SUBMIT'):
-                self.submit()
             if (action == 'EXIT'):
+                self.send("OK BYE")
                 exit=True
+            elif (action == 'SHUTDOWN'):
+                self.shutdown()
+                exit=True
+            elif (action == 'STATUS'):
+                self.status(spl[1] if len(spl) > 1 else None)
+            elif (action == 'SUBMIT'):
+                self.submit()
+            elif (action == 'PING'):
+                self.send("OK PONG")
+            else:
+                self.send("ERROR Unknown command")
+
+        self.request.close()
 
     def submit(self):
         args = {
@@ -71,6 +105,8 @@ class SJQHandler(SocketServer.BaseRequestHandler):
                     break
 
             src = self.request.recv(srclen)
+            print "<<< <%s bytes>" % len(src)
+
 
             if errors:
                 self.send("ERROR %s" % ('; '.join(errors)))
@@ -100,5 +136,5 @@ class SJQHandler(SocketServer.BaseRequestHandler):
  
 
     def send(self, msg):
+        print ">>> %s" % msg
         self.request.sendall('%s\r\n' % msg)
-        self.request.close()

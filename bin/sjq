@@ -1,123 +1,15 @@
 #!/usr/bin/env python
 '''
-MVpipe Simple Job Queue (mvsjq)
+Simple Job Queue (SJQ)
 
-You specify:
-  - how many processes to run (CPUs)
-  - how much memory to use
-    (and defaults per job) 
+Start the server
 
-The SJQ will open a socket to accept job requests. The protocol for these
-requests is a simple text-based protocol. By default, this socket will be
-located in $HOME/.mvsjq.sock. Jobs will run under the credentials of the 
-running user. When there are no more jobs, SJQ will wait for $TIMEOUT
-seconds (default: 60). If there are still no jobs, then it will shut itself
-down.
+- or - 
 
-Note: If you want a more complicated setup for more than one client user, you
-can  specify an absolute path for the socket, and the SJQ will run the jobs
-whatever account has started the daemon. You can also run the daemon as root
-and it will run the jobs as the UID/GID of the submitting user. However, if
-you *really* want to do this, please consider a different scheduler, such as
-Open Grid Engine, PBS, or SLURM. SJQ was designed to make it easier to run
-multi-task pipelines on a single server that didn't already have a job
-scheduler installed. It should be used sparingly!
-
-Scheduling priority
--------------------
-Jobs are executed on a first-come, first-serve basis. If a job can not execute
-due to CPU, memory, or job dependencies, then it will be skipped and SJQ will
-attempt to run the next available job.
-
-
-Configuration
--------------
-You can set various default values in the $HOME/.mvpiperc file. The config
-values that are relevant to SJQ are:
-
-mvsjq.socket=path-to-file           default: $HOME/.mvsjq.sock
-mvsjq.log=path-to-logfile           default: none
-mvsjq.daemonize=[TF]                default: F
-mvsjq.autoshutdown=[TF]             default: T
-mvsjq.waittime=value-in-seconds     default: 60
-mvsjq.maxjobs=max-jobs-to-keep      default: 10000
-mvsjq.maxprocs=max-procs            default: total CPUs in system
-mvsjq.maxmem=max-mem (ex: 8M, 2G)   default: None (memory use not restricted)
-
-mvsjq.defaults.procs=num            default: 1
-mvsjq.defaults.mem=mem-per-job      default: 2G
-
-Note: maxjobs is the number of jobs that will be kept in memory, including any
-      jobs that have finished. If the length of the job queue reaches maxjobs,
-      any completed jobs will be removed from the queue. If there still is not
-      enough room, then no more jobs can be submitted to the queue.
-
-Protocol
---------
-
-To check the connection: 
-  send: PING\r\n
-  recv: PONG\r\n
-
-To close the connection: 
-  send: EXIT\r\n
-  recv: BYE\r\n
-
-To submit a job:
-  send: SUBMIT\r\n
-  send: OPTION VALUE
-  send: OPTION VALUE
-        ...
-  send: SRC script-len\r\n
-  send  <script-bytes>
-  recv: OK jobid\r\n
-  recv: ERROR error-message(s)\r\n
-
-  valid options:
-    MEM CPU DEPENDS STDOUT STDERR ENV CWD NAME UID* GID*
-
-      MEM   maximum memory required (100M, 2G, etc...) (G=1024^3, M=1024^2)
-      CPU   number of CPUs this job requires
-            (can not be larger than the number of managed CPUs)
-
-            Note: CPU and MEM restrictions aren't enforced - only used for
-                  scheduling purposes
-
-      DEPENDS is a colon delimited list of job-ids that must finish
-              (successfully) for this job to start
-
-      STDOUT, STDERR should be filenames - if not specified, they will be saved
-                    in the CWD as jobid.{stdout,stderr}
-
-      ENV a colon-delimited list of the environment variables 
-          that should be set prior to running the script
-
-      CWD the current working directory for the job
-
-      NAME a human-readable name for the job (not required)
-
-      UID/GID the uid/gid to run this job under - this only works when SJQ is
-              started by root and is *not* recommended
-
-To kill a job:
-  send: KILL jobid\r\n
-  recv: OK\r\n
-  recv: ERROR jobid missing\r\n
-
-To stop the server:
-  send: SHUTDOWN\r\n
-  recv: OK\r\n
-
-To list job status:
-  send: STATUS {JOBID}\r\n
-  recv: JOBID\tJOBNAME\t[RQHSFA]\tDEPENDS\r\n
-        (one line for each job)
-  recv: OK\r\n
-
-  If "JOBID" is not given, then all jobs, including jobs that have finished
-  (successfully or not) will be listed.
-
-  [RQHSFA] - running, queued, holding, success, fail, abort (parent job failed)
+Connect to the server as a client
+  - submit tasks
+  - get status of tasks
+  - shutdown server
 
 '''
 
@@ -136,20 +28,7 @@ import sjq.client
 def getconn():
     return sjq.client.SJQClient()
 
-def status(jobid):
-    conn = getconn()
-    result = conn.status(jobid)
-    for line in result.split('\n'):
-        sys.stdout.write('%s\n' % line.strip())
-    conn.close()
-
-def shutdown():
-    conn = getconn()
-    print conn.shutdown()
-    conn.close()
-
-def submit(*args):
-    conn = getconn()
+def submit(conn, *args):
     kwargs = {}
     last = None
     src = ''
@@ -176,7 +55,6 @@ def submit(*args):
         kwargs['name'] = name
 
     print conn.submit(src, **kwargs)
-    conn.close()
 
 def start(**args):
     sjq.server.SJQServer(args).start()
@@ -190,49 +68,62 @@ if __name__ == '__main__':
     cmd = None
     cmdargs = []
 
+    verbose = False
+
     for arg in sys.argv[1:]:
         if cmd:
             cmdargs.append(arg)
         elif last == '-l':
-            args['mvsjq.log'] = arg
+            args['sjq.log'] = arg
             last = None
         elif last == '-s':
-            args['mvsjq.socket'] = arg
+            args['sjq.socket'] = arg
             last = None
         elif last == '-waittime':
-            args['mvsjq.waittime'] = int(arg)
+            args['sjq.waittime'] = int(arg)
             last = None
         elif last == '-waittime':
-            args['mvsjq.waittime'] = int(arg)
+            args['sjq.waittime'] = int(arg)
             last = None
         elif last == '-procs':
-            args['mvsjq.procs'] = int(arg)
+            args['sjq.procs'] = int(arg)
             last = None
         elif last == '-mem':
-            args['mvsjq.mem'] = arg
+            args['sjq.mem'] = arg
             last = None
+        elif arg == '-v':
+            verbose = True
         elif arg == '-server':
             server = True
         elif arg == '-d':
-            args['mvsjq.daemonize'] = True
+            args['sjq.daemonize'] = True
         elif arg == '-no-daemon':
-            args['mvsjq.daemonize'] = False
+            args['sjq.daemonize'] = False
         elif arg == '-autoshutdown':
-            args['mvsjq.autoshutdown'] = True
+            args['sjq.autoshutdown'] = True
         elif arg == '-no-autoshutdown':
-            args['mvsjq.autoshutdown'] = False
+            args['sjq.autoshutdown'] = False
         elif arg[0] == '-':
             last = arg
-        elif not cmd:
+        elif not cmd and arg in ['status', 'submit', 'shutdown']:
             cmd = arg
+        else:
+            sys.stderr.write("Unknown option: %s\n\n" % arg)
+            sys.exit(1)
 
     if server:
-        start(**args)
+        start(verbose=verbose, args=args)
     else:
+
+        conn = sjq.client.SJQClient(verbose)
+
         if cmd == 'status':
-            status(*cmdargs)
+            result = conn.status(*cmdargs)
+            for line in result.split('\n'):
+                sys.stdout.write('%s\n' % line.rstrip())
         elif cmd == 'submit':
             submit(*cmdargs)
         elif cmd == 'shutdown':
-            shutdown()
+            print conn.shutdown()
+        conn.close()
 

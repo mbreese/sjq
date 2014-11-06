@@ -1,33 +1,32 @@
 import os
 import sys
+import select
 import socket
 import tempfile
 import threading
 import subprocess
 import SocketServer
-import multiprocessing
 
-import mvpipe.config
-import mvpipe.sjq
+import sjq.config
 import handler
-import queue
-
+import jobqueue
 
 class SJQServer(object):
 
-    def __init__(self, args):
-        self.config = mvpipe.config.load_config(args)
+    def __init__(self, verbose=False, args=None):
+        self.config = sjq.config.load_config(args)
 
-        self.job_queue = queue.JobQueue(self.config['mvsjq.db'])
+        self.job_queue = jobqueue.JobQueue(self.config['sjq.db'])
 
         self._server = None
         self._is_shutdown = False
+        self.verbose = verbose
 
         self.cond = threading.Condition()
 
     def sched(self):
-        procs_avail = self.config['mvsjq.maxprocs']
-        mem_avail = self.config['mvsjq.maxmem']
+        procs_avail = self.config['sjq.maxprocs']
+        mem_avail = self.config['sjq.maxmem']
 
         running_processes = []
 
@@ -73,10 +72,10 @@ class SJQServer(object):
                     running_processes.append((proc, job))
                     continue
 
+            self.job_queue.close()  # close the connection for the thread, if opened
             self.cond.acquire()
             self.cond.wait(10)
             self.cond.release()
-
 
     def spawn_job(self, job):
         cmd = None
@@ -144,8 +143,8 @@ class SJQServer(object):
             sys.stderr.write("SJQ server already shutdown!")
             return
 
-        if os.path.exists(self.config['mvsjq.socket']):
-            sys.stderr.write("Socket path: %s exists!" % self.config['mvsjq.socket'])
+        if os.path.exists(self.config['sjq.socket']):
+            sys.stderr.write("Socket path: %s exists!" % self.config['sjq.socket'])
             return
 
         if not self._server:
@@ -154,12 +153,15 @@ class SJQServer(object):
             t.daemon = True
             t.start()
 
-            self._server = SocketServer.UnixStreamServer(self.config['mvsjq.socket'], handler.SJQHandler)
+            self._server = ThreadedUnixServer(self.config['sjq.socket'], handler.SJQHandler)
+            self._server.socket.settimeout(30.0)
             self._server.sjq = self
             sys.stderr.write("SQJ - listening for job requests...\n")
             try:
                 self._server.serve_forever()
             except socket.error: 
+                pass
+            except select.error:
                 pass
             except KeyboardInterrupt:
                 sys.stderr.write("\n")
@@ -176,38 +178,43 @@ class SJQServer(object):
             # self.lock.acquire()
 
             sys.stderr.write("Shutting down...")
-            self._server.shutdown()
+            try:
+                self._server.shutdown()
+            except:
+                pass
             sys.stderr.write(" OK\n")
 
             sys.stderr.write("Removing socket...")
-            os.unlink(self.config['mvsjq.socket'])
+            try:
+                os.unlink(self.config['sjq.socket'])
+            except:
+                pass
             sys.stderr.write(" OK\n")
 
             sys.stderr.write("Closing job queue...")
-            self.job_queue.close()
             sys.stderr.write(" OK\n")
 
             self._server = None
             self._is_shutdown = True
+
             self.cond.acquire()
             self.cond.notify()
             self.cond.release()
-
             # self.lock.release()
 
     def submit_job(self, src, procs=None, mem=None, **args):
         if procs == None:
-            procs = self.config['mvsjq.defaults.procs']
+            procs = self.config['sjq.defaults.procs']
         
         if mem == None:
-            mem = self.config['mvsjq.defaults.mem']
+            mem = self.config['sjq.defaults.mem']
         else:
-            mem = mvpipe.sjq.convert_mem_val(mem)
+            mem = sjq.convert_mem_val(mem)
 
-        if procs > self.config['mvsjq.maxprocs']:
+        if procs > self.config['sjq.maxprocs']:
             return None
 
-        if self.config['mvsjq.maxmem'] and mem > self.config['mvsjq.maxmem']:
+        if self.config['sjq.maxmem'] and mem > self.config['sjq.maxmem']:
             return None
 
         args['procs'] = procs
@@ -215,6 +222,7 @@ class SJQServer(object):
         args['src'] = src
 
         jobid = self.job_queue.submit(args)
+        self.job_queue.close()
 
         self.cond.acquire()
         self.cond.notify()
@@ -224,8 +232,11 @@ class SJQServer(object):
 
 def demote(uid, gid):
     def wrap():
-        if gid:
+        if gid is not None:
             os.setgid(gid)
-        if uid:
+        if uid is not None:
             os.setuid(uid)
     return wrap
+
+class ThreadedUnixServer(SocketServer.ThreadingMixIn, SocketServer.UnixStreamServer):
+    pass
