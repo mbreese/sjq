@@ -2,8 +2,10 @@ import os
 import sys
 import socket
 import sjq.config
+import sjq.support
 
 config = sjq.config.load_config()
+
 
 class SJQClient(object):
     def __init__(self, verbose=False):
@@ -14,18 +16,12 @@ class SJQClient(object):
         self.verbose = verbose
         self._closed = False
 
-    def readline(self):
-        s = ""
-        while not s or s[-1] != '\n':
-            ch = self.sock.recv(1)
-            if not ch:
-                break
-            s += ch
+    def recvbytes(self, size):
+        buf = ''
+        while len(buf) < size:
+            buf += self.sock.recv(size - len(buf))
 
-        if self.verbose:
-            sys.stderr.write("<<< %s\n" % (s.replace('\n', '\\n').replace('\r', '\\r')))
-
-        return s.rstrip()
+        return buf
 
     def sendrecv(self, msg):
         if self.verbose:
@@ -35,10 +31,10 @@ class SJQClient(object):
         self.sock.sendall("%s\r\n" % msg)
 
         # Receive response
-        line = self.readline()
+        line = sjq.support.readline(self.sock)
         resp = line
         while line and line[:2] != "OK" and line[:5] != "ERROR":
-            line = self.readline()
+            line = sjq.support.readline(self.sock)
             resp += line
         return resp
 
@@ -53,15 +49,26 @@ class SJQClient(object):
         self.sock.close()
         return ret
 
+    def ping(self, jobid=None):
+        return self.sendrecv("PING")
 
     def status(self, jobid=None):
         if jobid:
-            return self.sendrecv("STATUS %s" % jobid)
+            line = self.sendrecv("STATUS %s" % jobid)
         else:
-            return self.sendrecv("STATUS")
+            line = self.sendrecv("STATUS")
 
+        if line[:2] == 'OK':
+            size = int(line.split(' ', 1)[1])
+            return self.recvbytes(size)
 
-    def submit(self, src, procs=None, mem=None, stderr=None, stdout=None, env=False, cwd=None, name=None, uid=None, gid=None):
+        return line
+ 
+
+    def kill(self, jobid):
+        return self.sendrecv("KILL %s" % jobid)
+
+    def submit(self, src, procs=None, mem=None, stderr=None, stdout=None, env=False, cwd=None, name=None, uid=None, gid=None, depends=None):
         if env:
             envvals = []
             for k in os.environ:
@@ -99,15 +106,11 @@ class SJQClient(object):
             self.sock.sendall("GID %s\r\n" % gid)
         if name:
             self.sock.sendall("NAME %s\r\n" % name)
+        if depends:
+            self.sock.sendall("DEPENDS %s\r\n" % depends)
 
         self.sock.sendall("SRC %s\r\n" % len(src))
         self.sock.sendall(src)
 
         # Receive data from the server
-        buf = self.sock.recv(1024)
-        result = buf
-        while len(buf) > 0:
-            buf = self.sock.recv(1024)
-            result += buf
-
-        return result.strip()
+        return sjq.support.readline(self.sock)

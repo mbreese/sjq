@@ -13,8 +13,9 @@ Connect to the server as a client
 
 '''
 
-import sys
 import os
+import sys
+import socket
 
 try:
     import sjq
@@ -24,9 +25,6 @@ except:
 
 import sjq.server
 import sjq.client
-
-def getconn():
-    return sjq.client.SJQClient()
 
 def submit(conn, *args):
     kwargs = {}
@@ -40,10 +38,10 @@ def submit(conn, *args):
             last = None
         elif arg[0] == '-':
             last = arg[1:]
-        elif not src and os.path.exists(arg):
+        elif not src and os.path.exists(os.path.expanduser(arg)):
             src = ''
-            name = arg
-            with open(arg) as f:
+            name = os.path.basename(arg)
+            with open(os.path.expanduser(arg)) as f:
                 for line in f:
                     src += line
 
@@ -55,9 +53,6 @@ def submit(conn, *args):
         kwargs['name'] = name
 
     print conn.submit(src, **kwargs)
-
-def start(**args):
-    sjq.server.SJQServer(args).start()
 
 
 if __name__ == '__main__':
@@ -71,59 +66,72 @@ if __name__ == '__main__':
     verbose = False
 
     for arg in sys.argv[1:]:
-        if cmd:
+        if cmd and cmd != 'server':
             cmdargs.append(arg)
-        elif last == '-l':
-            args['sjq.log'] = arg
-            last = None
-        elif last == '-s':
-            args['sjq.socket'] = arg
-            last = None
-        elif last == '-waittime':
-            args['sjq.waittime'] = int(arg)
-            last = None
-        elif last == '-waittime':
-            args['sjq.waittime'] = int(arg)
-            last = None
-        elif last == '-procs':
-            args['sjq.procs'] = int(arg)
-            last = None
-        elif last == '-mem':
-            args['sjq.mem'] = arg
-            last = None
+        elif cmd == 'server':
+            if last == '-l':
+                args['sjq.logfile'] = arg
+                last = None
+            elif last == '-s':
+                args['sjq.socket'] = arg
+                last = None
+            elif last == '-waittime':
+                args['sjq.waittime'] = int(arg)
+                last = None
+            elif last == '-procs':
+                args['sjq.procs'] = int(arg)
+                last = None
+            elif last == '-mem':
+                args['sjq.mem'] = arg
+                last = None
+            elif arg == '-d':
+                args['sjq.daemon'] = True
+            elif arg == '-f':
+                args['sjq.daemon'] = False
+            elif arg == '-autoshutdown':
+                args['sjq.autoshutdown'] = True
+            elif arg == '-no-autoshutdown':
+                args['sjq.autoshutdown'] = False
+            elif arg == '-v':
+                verbose = True
+            elif arg[0] == '-':
+                last = arg
         elif arg == '-v':
             verbose = True
-        elif arg == '-server':
-            server = True
-        elif arg == '-d':
-            args['sjq.daemonize'] = True
-        elif arg == '-no-daemon':
-            args['sjq.daemonize'] = False
-        elif arg == '-autoshutdown':
-            args['sjq.autoshutdown'] = True
-        elif arg == '-no-autoshutdown':
-            args['sjq.autoshutdown'] = False
-        elif arg[0] == '-':
-            last = arg
-        elif not cmd and arg in ['status', 'submit', 'shutdown']:
+        elif not cmd and arg in ['status', 'submit', 'shutdown', 'ping' ,'server', 'kill']:
             cmd = arg
         else:
             sys.stderr.write("Unknown option: %s\n\n" % arg)
             sys.exit(1)
 
-    if server:
-        start(verbose=verbose, args=args)
+    if cmd == 'server':
+        sjq.server.start(verbose, args)
     else:
+        try:
+            conn = sjq.client.SJQClient(verbose)
+        except socket.error:
+            sys.stderr.write("SJQ server not found!\n")
+            sys.exit(1)
 
-        conn = sjq.client.SJQClient(verbose)
+            # sjq.server.start(verbose, args, daemon=True)
+            # sys.stderr.write("OK\n")
+            # time.sleep(2)
+
+            # conn = sjq.client.SJQClient(verbose)
+
+            pass
 
         if cmd == 'status':
             result = conn.status(*cmdargs)
             for line in result.split('\n'):
                 sys.stdout.write('%s\n' % line.rstrip())
         elif cmd == 'submit':
-            submit(*cmdargs)
+            submit(conn, *cmdargs)
+        elif cmd == 'ping':
+            print conn.ping()
+        elif cmd == 'kill':
+            print conn.kill(*cmdargs)
         elif cmd == 'shutdown':
             print conn.shutdown()
-        conn.close()
 
+        conn.close()

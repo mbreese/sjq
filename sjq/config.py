@@ -10,8 +10,9 @@ _config = None
 _defconfig = {
     'sjq.socket':  os.path.expanduser('~/.sjq.sock'),
     'sjq.db':  os.path.expanduser('~/.sjq.db'),
-    'sjq.log':  None,
-    'sjq.daemonize':  False,
+    'sjq.logfile':  None,
+    'sjq.daemon':  False,
+    'sjq.pidfile': os.path.expanduser('~/.sjq.pid'),
     'sjq.autoshutdown':  True,
     'sjq.waittime':  60,
     'sjq.maxjobs':  10000,
@@ -21,7 +22,6 @@ _defconfig = {
     'sjq.defaults.mem':  sjq.convert_mem_val('2G'),
     'sjq.cur_jobid': 1
 }
-
 
 def get_config():
     global _config

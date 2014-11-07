@@ -34,8 +34,9 @@ You can set various default values in the `$HOME/.sjqrc` file. The config
 values that are relevant to SJQ are:
 
     sjq.socket=path-to-file           default: $HOME/.sjq.sock
-    sjq.log=path-to-logfile           default: none
-    sjq.daemonize=[TF]                default: F
+    sjq.logfile=path-to-logfile       default: none
+    sjq.daemon=[TF]                   default: F
+    sjq.pidfile=path-to-pidfile       default: $HOME/.sjq.pid
     sjq.autoshutdown=[TF]             default: T
     sjq.waittime=value-in-seconds     default: 60
     sjq.maxprocs=max-procs            default: total CPUs in system

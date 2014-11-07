@@ -1,62 +1,52 @@
 import os
-import time
-import socket
+import sys
 import SocketServer
+
+import sjq.support
 
 
 class SJQHandler(SocketServer.BaseRequestHandler):
-    def readline(self):
-        s = ""
-        start = time.time()
-        while not s or s[-1] != '\n':
-            try:
-                ch = self.request.recv(1)
-                if ch:
-                    start = time.time()
-                    s += ch
-            except socket.timeout:
-                print "Timeout..."
-                return None
-            except socket.error, e:
-                if e.args[0] == 35:
-                    now = time.time()
-                    if now - start < 30:
-                        time.sleep(0.1)
-                    else:
-                        print "Timeout..."
-                        return None
-                else:
-                    print e
-                    return None
-
-        print "<<< %s" % (s.replace('\n', '\\n').replace('\r', '\\r'))
-
-        return s.rstrip('\r\n')
-
     def handle(self):
         exit = False
         while not exit:
-            line = self.readline()
-            if not line:
-                break
+            try:
+                line = sjq.support.readline(self.request, logger=self.server.sjq.debug)
+                if not line:
+                    break
 
-            spl = line.split(' ', 1)
-            action = spl[0].upper()
+                spl = line.split(' ', 1)
+                action = spl[0].upper()
 
-            if (action == 'EXIT'):
-                self.send("OK BYE")
+                if (action == 'EXIT'):
+                    self.send("OK Goodbye!")
+                    exit=True
+                elif (action == 'SHUTDOWN'):
+                    self.shutdown()
+                    exit=True
+                elif (action == 'STATUS'):
+                    self.status(spl[1] if len(spl) > 1 else None)
+                elif (action == 'SUBMIT'):
+                    self.submit()
+                elif (action == 'KILL'):
+                    jobid = None
+                    try:
+                        jobid = int(spl[1])
+                    except:
+                        jobid = None
+
+                    if jobid:
+                        self.kill(jobid)
+                    else:
+                        self.send("ERROR Bad jobid")
+
+                elif (action == 'PING'):
+                    self.ping()
+                else:
+                    self.send("ERROR Unknown command")
+            except Exception, e:
+                sys.stderr.write(str(e))
+                self.send("ERROR Server exception")
                 exit=True
-            elif (action == 'SHUTDOWN'):
-                self.shutdown()
-                exit=True
-            elif (action == 'STATUS'):
-                self.status(spl[1] if len(spl) > 1 else None)
-            elif (action == 'SUBMIT'):
-                self.submit()
-            elif (action == 'PING'):
-                self.send("OK PONG")
-            else:
-                self.send("ERROR Unknown command")
 
         self.request.close()
 
@@ -78,7 +68,7 @@ class SJQHandler(SocketServer.BaseRequestHandler):
 
         try:
             while True:
-                line = self.readline()
+                line = sjq.support.readline(self.request)
                 if ' ' in line:
                     k,v = line.split(' ',1)
                 else:
@@ -105,8 +95,17 @@ class SJQHandler(SocketServer.BaseRequestHandler):
                     break
 
             src = self.request.recv(srclen)
-            print "<<< <%s bytes>" % len(src)
+            self.server.sjq.debug("<<< <%s bytes>" % len(src))
 
+
+            cmd = None
+            for line in [x.strip() for x in src.split('\n')]:
+                if line[:2] == '#!':
+                    cmd = line[2:]
+                break
+
+            if not cmd:
+                errors.append("Don't know how to run script (missing shebang)")
 
             if errors:
                 self.send("ERROR %s" % ('; '.join(errors)))
@@ -119,22 +118,28 @@ class SJQHandler(SocketServer.BaseRequestHandler):
         except:
             self.send("ERROR")
 
-    def status(self, jobid=None):
-        if jobid:
-            status = self.server.sjq.job_queue.status(jobid)
-            if status:
-                self.send("OK %s %s" % (jobid, status))
-                return
-            self.send("ERROR %s not found!" % jobid)
-        else:
-            self.send("ERROR Not implemented")
+    def kill(self, jobid):
+        self.server.sjq.kill_job(jobid)
+        self.send("OK")
         
+    def status(self, jobid=None):
+        #JOBID\tJOBNAME\t[RQHSFAK]\tDEPENDS\r\n
+        output=[]
+        for tup in self.server.sjq.job_queue.status(jobid):
+            output.append('\t'.join([str(x) for x in tup]))
+
+        out = '\n'.join(output)
+        self.send("OK %s" % len(out))
+        self.request.sendall(out)
+
+    def ping(self):
+        self.send("OK %s" % self.server.sjq.queue_stats())
 
     def shutdown(self):
-        self.send("OK")
+        self.send("OK Shutting down server")
         self.server.sjq.shutdown()
  
 
     def send(self, msg):
-        print ">>> %s" % msg
+        self.server.sjq.debug(">>> %s" % msg)
         self.request.sendall('%s\r\n' % msg)

@@ -46,15 +46,29 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         #     self.local.conn.row_factory = sqlite3.Row
         # return self.local.conn
 
-    def status(self, jobid):
+    def status(self, jobid=None):
         conn = self.getconn()
         cur = conn.cursor()
-        cur.execute("SELECT state FROM job WHERE jobid = ?", (jobid,))
-        state = None
+        if jobid:
+            cur.execute("SELECT j.jobid, j.name, j.state, (SELECT group_concat(parentid,':') FROM job_dep jd WHERE jd.jobid=j.jobid) FROM job j WHERE j.jobid = ?", (jobid,))
+        else:
+            cur.execute("SELECT j.jobid, j.name, j.state, (SELECT group_concat(parentid,':') FROM job_dep jd WHERE jd.jobid=j.jobid) FROM job j")
+
+        tups = []
         for row in cur:
-            state = row[0]
+            tups.append((row[0], row[1], row[2], row[3] if row[3] else ''))
         cur.close()
-        return state
+        return tups
+
+    def jobstates(self):
+        conn = self.getconn()
+        cur = conn.cursor()
+        cur.execute("SELECT state, COUNT(state) FROM job GROUP BY state")
+        states = []
+        for row in cur:
+            states.append((row[0], row[1]))
+        cur.close()
+        return states
 
     def findjob(self, maxprocs=None, maxmem=None):
         clauses = []
@@ -97,16 +111,18 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         conn.execute(sql)
         conn.commit()
 
-    def update_job_state(self, jobid, state, retcode=None):
-        if state == 'R':
-            sql = 'UPDATE job SET state=?, started=? WHERE jobid=?'
-            vals = (state, datetime.datetime.now(), jobid)
-        elif state in ['S', 'F', 'A']:
-            sql = 'UPDATE job SET state=?, finished=?, retcode=? WHERE jobid=?'
-            vals = (state, datetime.datetime.now(), retcode, jobid)
+    def update_job_state(self, jobid, newstate, retcode=None):
+        if newstate == 'R':
+            sql = "UPDATE job SET state=?, started=? WHERE jobid=? AND state = 'Q'"
+            vals = (newstate, datetime.datetime.now(), jobid)
+        elif newstate in ['S', 'F', 'A']:
+            sql = "UPDATE job SET state=?, finished=?, retcode=? WHERE jobid=? AND state='R'"
+            vals = (newstate, datetime.datetime.now(), retcode, jobid)
+        elif newstate == 'K':
+            sql = "UPDATE job SET state=?, finished=? WHERE jobid=? AND (state='R' OR state='Q' OR state='H')"
+            vals = (newstate, datetime.datetime.now(), jobid)
         else:
             return
-
 
         conn = self.getconn()
         conn.execute(sql, vals)
@@ -139,7 +155,6 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
             for jobid in promote_ids:
                 conn.execute("UPDATE job SET state='Q' WHERE jobid=?", (jobid,))
             conn.commit()
-
 
     def submit(self, job):
         keys = ['src', 'submitted', 'state']

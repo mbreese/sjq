@@ -1,7 +1,11 @@
 import os
 import sys
+import time
+import atexit
 import select
+import signal
 import socket
+import datetime
 import tempfile
 import threading
 import subprocess
@@ -11,8 +15,23 @@ import sjq.config
 import handler
 import jobqueue
 
-class SJQServer(object):
 
+def start(verbose=False, args=None, daemon=False):
+    srv = SJQServer(verbose, args)
+    if srv.config['sjq.daemon'] or daemon:
+        pidfile = None
+        if 'sjq.pidfile' in srv.config and srv.config['sjq.pidfile']:
+            pidfile = os.path.abspath(os.path.expanduser(srv.config['sjq.pidfile']))
+
+        stderr = None
+        if srv.config['sjq.logfile']:
+            stderr = os.path.abspath(os.path.expanduser(srv.config['sjq.logfile']))
+        daemonize(stderr=stderr, pidfile=pidfile)
+
+    srv.start()
+
+
+class SJQServer(object):
     def __init__(self, verbose=False, args=None):
         self.config = sjq.config.load_config(args)
 
@@ -23,59 +42,121 @@ class SJQServer(object):
         self.verbose = verbose
 
         self.cond = threading.Condition()
+        self.lock = threading.Lock()
+
+        self.procs_avail = self.config['sjq.maxprocs']
+        self.mem_avail = self.config['sjq.maxmem']
+        self.running_jobs = {}
+
+    def debug(self, msg):
+        self.log(msg, True)
+
+    def log(self, msg, debug=False):
+        if not debug or self.verbose:
+            sys.stderr.write('%s %s\n' % (datetime.datetime.now(), msg))
 
     def sched(self):
-        procs_avail = self.config['sjq.maxprocs']
-        mem_avail = self.config['sjq.maxmem']
-
-        running_processes = []
+        missing_job_waiting = None
 
         while not self._is_shutdown:
-            print "-----------"
-            print "PROC AVAIL: %s" % procs_avail
-            print "MEM AVAIL: %s" % (mem_avail if mem_avail else "*")
-            removelist = []
-            for i, (proc, job) in enumerate(running_processes):
+            self.lock.acquire()
+            self.debug('---------------------------------')
+            self.debug("PROC AVAIL: %s" % self.procs_avail)
+            self.debug("MEM AVAIL: %s" % (self.mem_avail if self.mem_avail else "*"))
+
+            donelist = []
+            for jobid in self.running_jobs:
+                proc, job = self.running_jobs[jobid]
                 retcode = proc.poll()
                 if retcode is not None:
-                    print "JOB: %s PID: %s DONE (%s)" % (job['jobid'], proc.pid, retcode)
+                    self.log("JOB: %s PID: %s DONE (%s)" % (jobid, proc.pid, retcode))
                     if retcode == 0:
-                        self.job_queue.update_job_state(job['jobid'], 'S', retcode)
+                        self.job_queue.update_job_state(jobid, 'S', retcode)
                     else:
-                        self.job_queue.update_job_state(job['jobid'], 'F', retcode)
-                        self.job_queue.abort_deps(job['jobid'])
+                        self.job_queue.update_job_state(jobid, 'F', retcode)
+                        self.job_queue.abort_deps(jobid)
 
-                    procs_avail += job['procs']
-                    if mem_avail is not None:
-                        mem_avail += job['mem']
-                    removelist.insert(0,i)
+                    donelist.append(jobid)
                 else:
-                    print "JOB: %s PID: %s RUNNING" % (job['jobid'], proc.pid)
+                    self.debug("JOB: %s PID: %s RUNNING" % (jobid, proc.pid))
 
+            self.lock.release()
+            for jobid in donelist:
+                self.release_running_job(jobid)
 
-            for i in removelist:
-                del running_processes[i]
-
-
-            print 'Checking held jobs...'
+            self.lock.acquire()
+            self.debug('Checking held jobs...')
             self.job_queue.check_held_jobs()
-            print 'Looking for jobs...'
-            job = self.job_queue.findjob(procs_avail, mem_avail)
+
+            self.debug(self.queue_stats())
+
+            self.debug('Looking for jobs...')
+            job = self.job_queue.findjob(self.procs_avail, self.mem_avail)
             if job:
                 proc = self.spawn_job(job)
                 if proc:
-                    print "JOB: %s PID: %s STARTED" % (job['jobid'], proc.pid)
+                    self.log("JOB: %s PID: %s STARTED" % (job['jobid'], proc.pid))
                     self.job_queue.update_job_state(job['jobid'], 'R')
-                    procs_avail -= job['procs']
-                    if mem_avail is not None:
-                        mem_avail -= job['mem']
-                    running_processes.append((proc, job))
+                    self.procs_avail -= job['procs']
+                    if self.mem_avail is not None:
+                        self.mem_avail -= job['mem']
+                    self.running_jobs[job['jobid']] = (proc, job)
+                    self.lock.release()
                     continue
 
             self.job_queue.close()  # close the connection for the thread, if opened
+
+            if self.config['sjq.autoshutdown']:
+                if len(self.running_jobs) == 0:
+                    if not missing_job_waiting:
+                        missing_job_waiting = time.time()
+                    else:
+                        now = time.time()
+                        if now - missing_job_waiting > self.config['sjq.waittime']:
+                            self.log("No jobs to run, shutting down!")
+                            self.shutdown()
+                else:
+                    missing_job_waiting = None
+
+            self.lock.release()
+
             self.cond.acquire()
             self.cond.wait(10)
             self.cond.release()
+
+        for jobid in list(self.running_jobs.keys()):
+            self.kill_job(jobid)
+
+    def queue_stats(self):
+        states = sorted(self.job_queue.jobstates())
+        return ' '.join([':'.join([str(y) for y in x]) for x in states])
+
+    def kill_job(self, jobid):
+        if jobid in self.running_jobs:
+            proc, job = self.running_jobs[jobid]
+            self.log("KILLING JOB: %s PID: %s" % (job['jobid'], proc.pid))
+            # The forked process is the head of a program group.
+            # Since we could have spawned other procs from here, 
+            # kill the entire group
+            os.killpg(proc.pid, signal.SIGKILL)
+            self.release_running_job(jobid)
+
+        self.job_queue.update_job_state(job['jobid'], 'K')
+        self.cond.acquire()
+        self.cond.notify()
+        self.cond.release()
+
+    def release_running_job(self, jobid):
+        self.lock.acquire()
+        if jobid in self.running_jobs:
+            job = self.running_jobs[jobid][1]
+
+            self.procs_avail += job['procs']
+            if self.mem_avail is not None:
+                self.mem_avail += job['mem']
+
+            del self.running_jobs[jobid]
+        self.lock.release()
 
     def spawn_job(self, job):
         cmd = None
@@ -85,7 +166,7 @@ class SJQServer(object):
             break
 
         if not cmd:
-            sys.stderr.write("Don't know how to run job: %s\n" % line)
+            self.log("Don't know how to run job: %s\n" % line)
         else:
             if not 'cwd' in job or not job['cwd']:
                 cwd = os.path.expanduser("~")
@@ -128,9 +209,12 @@ class SJQServer(object):
             stdin.seek(0)
 
             if os.getuid() == 0:
-                preexec_fn = demote(job['uid'], job['gid'])
+                def preexec_fn():
+                    demote(job['uid'], job['gid'])
+                    os.setpgrp()
             else:
-                preexec_fn = None
+                def preexec_fn():
+                    os.setpgrp()
 
             proc = subprocess.Popen([cmd], stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
             return proc
@@ -140,15 +224,15 @@ class SJQServer(object):
 
     def start(self):
         if self._is_shutdown:
-            sys.stderr.write("SJQ server already shutdown!")
+            self.log("SJQ server already shutdown!")
             return
 
         if os.path.exists(self.config['sjq.socket']):
-            sys.stderr.write("Socket path: %s exists!" % self.config['sjq.socket'])
+            self.log("Socket path: %s exists!" % self.config['sjq.socket'])
             return
 
         if not self._server:
-            sys.stderr.write("Starting job scheduler\n")
+            self.log("Starting job scheduler")
             t = threading.Thread(target=self.sched, args = ())
             t.daemon = True
             t.start()
@@ -156,7 +240,7 @@ class SJQServer(object):
             self._server = ThreadedUnixServer(self.config['sjq.socket'], handler.SJQHandler)
             self._server.socket.settimeout(30.0)
             self._server.sjq = self
-            sys.stderr.write("SQJ - listening for job requests...\n")
+            self.log("Listening for job requests...")
             try:
                 self._server.serve_forever()
             except socket.error: 
@@ -164,7 +248,7 @@ class SJQServer(object):
             except select.error:
                 pass
             except KeyboardInterrupt:
-                sys.stderr.write("\n")
+                pass
 
             self.__shutdown()
             t.join()
@@ -177,22 +261,17 @@ class SJQServer(object):
         if self._server:
             # self.lock.acquire()
 
-            sys.stderr.write("Shutting down...")
+            self.log("Shutting down...")
             try:
                 self._server.shutdown()
             except:
                 pass
-            sys.stderr.write(" OK\n")
 
-            sys.stderr.write("Removing socket...")
+            self.log("Removing socket...")
             try:
                 os.unlink(self.config['sjq.socket'])
             except:
                 pass
-            sys.stderr.write(" OK\n")
-
-            sys.stderr.write("Closing job queue...")
-            sys.stderr.write(" OK\n")
 
             self._server = None
             self._is_shutdown = True
@@ -224,6 +303,8 @@ class SJQServer(object):
         jobid = self.job_queue.submit(args)
         self.job_queue.close()
 
+        self.log("New job: %s" % jobid)
+
         self.cond.acquire()
         self.cond.notify()
         self.cond.release()
@@ -240,3 +321,64 @@ def demote(uid, gid):
 
 class ThreadedUnixServer(SocketServer.ThreadingMixIn, SocketServer.UnixStreamServer):
     pass
+
+
+
+def daemonize(stdin='/dev/null', stdout='/dev/null', stderr=None, pidfile=None):
+        """
+        do the UNIX double-fork magic, see Stevens' "Advanced
+        Programming in the UNIX Environment" for details (ISBN 0201563177)
+        http://www.erlenstar.demon.co.uk/unix/faq_2.html#SEC16
+
+        based on code from: http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
+        """
+
+        if pidfile and os.path.exists(pidfile):
+            sys.stderr.write("pidfile: %s already exists!\n" % pidfile)
+            sys.exit(1)
+
+        if stderr is None:
+           stderr = '/dev/null'
+
+        try:
+                pid = os.fork()
+                if pid > 0:
+                        # exit first parent
+                        sys.exit(0)
+        except OSError, e:
+                sys.stderr.write("fork #1 failed: %d (%s)\n" % (e.errno, e.strerror))
+                sys.exit(1)
+
+        # decouple from parent environment
+        os.chdir("/")
+        os.setsid()
+        os.umask(0)
+
+        # do second fork
+        try:
+                pid = os.fork()
+                if pid > 0:
+                        # exit from second parent
+                        sys.exit(0)
+        except OSError, e:
+                sys.stderr.write("fork #2 failed: %d (%s)\n" % (e.errno, e.strerror))
+                sys.exit(1)
+
+        # redirect standard file descriptors
+        sys.stdout.flush()
+        sys.stderr.flush()
+        si = file(stdin, 'r')
+        so = file(stdout, 'a+')
+        se = file(stderr, 'a+', 0)
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
+
+        # write pidfile
+        if pidfile:
+            def delpid():
+                os.unlink(pidfile)
+            atexit.register(delpid)
+            pid = str(os.getpid())
+            file(pidfile,'w+').write("%s\n" % pid)
+
