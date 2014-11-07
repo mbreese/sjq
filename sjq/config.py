@@ -14,6 +14,7 @@ _defconfig = {
     'sjq.daemon':  False,
     'sjq.pidfile': os.path.expanduser('~/.sjq.pid'),
     'sjq.autoshutdown':  True,
+    'sjq.schedtime':  60,
     'sjq.waittime':  60,
     'sjq.maxjobs':  10000,
     'sjq.maxprocs': multiprocessing.cpu_count(),

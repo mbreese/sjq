@@ -38,6 +38,7 @@ values that are relevant to SJQ are:
     sjq.daemon=[TF]                   default: F
     sjq.pidfile=path-to-pidfile       default: $HOME/.sjq.pid
     sjq.autoshutdown=[TF]             default: T
+    sjq.schedtime=value-in-seconds    default: 60 - the time between scheduling runs
     sjq.waittime=value-in-seconds     default: 60
     sjq.maxprocs=max-procs            default: total CPUs in system
     sjq.maxmem=max-mem (ex: 8M, 2G)   default: None (memory use not restricted)
@@ -52,7 +53,7 @@ Protocol
 To check the connection: 
 
     send: PING\r\n
-    recv: OK PONG\r\n
+    recv: OK <job queue stats>\r\n
 
 To close the connection: 
 
@@ -71,10 +72,10 @@ To submit a job:
     recv: ERROR error-message(s)\r\n
 
     Valid options:
-    MEM CPU DEPENDS STDOUT STDERR ENV CWD NAME UID* GID*
+    MEM PROCS DEPENDS STDOUT STDERR ENV CWD NAME UID* GID*
 
       MEM   maximum memory required (100M, 2G, etc...) (G=1024^3, M=1024^2)
-      CPU   number of CPUs this job requires
+      PROCS number of CPUs this job requires
             (can not be larger than the number of managed CPUs)
 
             Note: CPU and MEM restrictions aren't enforced - only used for
@@ -102,7 +103,8 @@ To kill a job:
 
     send: KILL jobid\r\n
     recv: OK\r\n
-    recv: ERROR jobid missing\r\n
+
+    Note: this returns OK even if a jobid doesn't exist or a job has already finished
 
 To stop the server:
 

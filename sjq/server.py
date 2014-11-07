@@ -46,6 +46,7 @@ class SJQServer(object):
 
         self.procs_avail = self.config['sjq.maxprocs']
         self.mem_avail = self.config['sjq.maxmem']
+        self.sched_time = self.config['sjq.schedtime']
         self.running_jobs = {}
 
     def debug(self, msg):
@@ -121,7 +122,7 @@ class SJQServer(object):
             self.lock.release()
 
             self.cond.acquire()
-            self.cond.wait(10)
+            self.cond.wait(self.sched_time)
             self.cond.release()
 
         for jobid in list(self.running_jobs.keys()):
