@@ -72,7 +72,8 @@ class SJQHandler(SocketServer.BaseRequestHandler):
             "cwd": None,
             "name": None,
             "uid": None,
-            "gid": None
+            "gid": None,
+            "hold": False
         }
         errors = []
         srclen = 0
@@ -80,6 +81,7 @@ class SJQHandler(SocketServer.BaseRequestHandler):
         try:
             while True:
                 line = sjq.support.readline(self.request)
+                self.server.sjq.debug("<<< " % line.rstrip())
                 if ' ' in line:
                     k,v = line.split(' ',1)
                 else:
@@ -99,6 +101,8 @@ class SJQHandler(SocketServer.BaseRequestHandler):
                             errors.append("%s => %s does not exist" % (k, v))
                         else:
                             args[k] = v
+                    elif k in ["hold"]:
+                        args[k] = True
                     else:
                         args[k] = v
                 elif k == "src":

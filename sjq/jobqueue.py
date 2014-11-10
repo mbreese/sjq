@@ -80,7 +80,7 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
             clauses.append('mem')
             vals.append(maxmem)
 
-        sql = 'SELECT * FROM job WHERE state ="Q"'
+        sql = 'SELECT * FROM job WHERE state = "Q"'
         for clause in clauses:
             sql += ' and %s <= ?' % clause
 
@@ -123,8 +123,8 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         elif newstate == 'K':
             sql = "UPDATE job SET state=?, finished=? WHERE jobid=? AND (state='R' OR state='Q' OR state='H')"
             vals = (newstate, datetime.datetime.now(), jobid)
-        elif newstate == 'Q':
-            sql = "UPDATE job SET state=? WHERE jobid=? AND state='H'"
+        elif newstate == 'H':
+            sql = "UPDATE job SET state=? WHERE jobid=? AND state='U'"
             vals = (newstate, jobid)
         else:
             return
@@ -163,7 +163,12 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
 
     def submit(self, job):
         keys = ['src', 'submitted', 'state']
-        vals = [job['src'], datetime.datetime.now(), 'H']
+        vals = [job['src'], datetime.datetime.now(), ]
+
+        if 'hold' in job and job['hold']:
+            vals.append('U')
+        else:
+            vals.append('H')
 
         valid = ['procs', 'mem', 'name', 'stdout', 'stderr', 'env', 'cwd', 'uid', 'gid']
 

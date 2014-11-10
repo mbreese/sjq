@@ -101,7 +101,7 @@ To submit a job:
       HOLD - Place a user-hold on the job. The user can release this this hold
              with the "RELEASE" command. This job should be released within
              the autoshutdown timeout or the server could be shutdown before
-             the job is released.
+             the job is released. (no value needed)
 
 
 To kill a job:
@@ -134,4 +134,4 @@ To list job status:
 If "JOBID" is not given, then all jobs, including jobs that have finished
 (successfully or not) will be listed.
 
-[RQHSFAK] - running, queued, holding, success, fail, abort (parent job failed), killed
+[RQHSFAKU] - running, queued, holding, success, fail, abort (parent job failed), killed, user-hold

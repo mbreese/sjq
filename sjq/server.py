@@ -148,7 +148,7 @@ class SJQServer(object):
         self.cond.release()
 
     def release_job(self, jobid):
-        self.job_queue.update_job_state(jobid, 'Q')
+        self.job_queue.update_job_state(jobid, 'H')
         self.cond.acquire()
         self.cond.notify()
         self.cond.release()
