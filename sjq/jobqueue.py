@@ -99,6 +99,8 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         return job
     
     def abort_deps(self, jobid):
+        # TODO: make this work... child jobs with a failed parent *won't* get run,
+        #       but this should still flag them appropriately
         pass
         # sql="SELECT jobid, parentid from job_dep WHERE job_dep.parentid=?"
         # conn = self.getconn()
@@ -121,6 +123,9 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         elif newstate == 'K':
             sql = "UPDATE job SET state=?, finished=? WHERE jobid=? AND (state='R' OR state='Q' OR state='H')"
             vals = (newstate, datetime.datetime.now(), jobid)
+        elif newstate == 'Q':
+            sql = "UPDATE job SET state=? WHERE jobid=? AND state='H'"
+            vals = (newstate, jobid)
         else:
             return
 

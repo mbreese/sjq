@@ -38,6 +38,17 @@ class SJQHandler(SocketServer.BaseRequestHandler):
                         self.kill(jobid)
                     else:
                         self.send("ERROR Bad jobid")
+                elif (action == 'RELEASE'):
+                    jobid = None
+                    try:
+                        jobid = int(spl[1])
+                    except:
+                        jobid = None
+
+                    if jobid:
+                        self.release(jobid)
+                    else:
+                        self.send("ERROR Bad jobid")
 
                 elif (action == 'PING'):
                     self.ping()
@@ -120,6 +131,10 @@ class SJQHandler(SocketServer.BaseRequestHandler):
 
     def kill(self, jobid):
         self.server.sjq.kill_job(jobid)
+        self.send("OK")
+        
+    def release(self, jobid):
+        self.server.sjq.release_job(jobid)
         self.send("OK")
         
     def status(self, jobid=None):

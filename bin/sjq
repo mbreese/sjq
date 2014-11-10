@@ -98,7 +98,7 @@ if __name__ == '__main__':
                 last = arg
         elif arg == '-v':
             verbose = True
-        elif not cmd and arg in ['status', 'submit', 'shutdown', 'ping' ,'server', 'kill']:
+        elif not cmd and arg in ['status', 'submit', 'shutdown', 'ping' ,'server', 'kill', 'release']:
             cmd = arg
         else:
             sys.stderr.write("Unknown option: %s\n\n" % arg)
@@ -119,19 +119,20 @@ if __name__ == '__main__':
 
             # conn = sjq.client.SJQClient(verbose)
 
-            pass
-
-        if cmd == 'status':
-            result = conn.status(*cmdargs)
-            for line in result.split('\n'):
-                sys.stdout.write('%s\n' % line.rstrip())
-        elif cmd == 'submit':
-            submit(conn, *cmdargs)
-        elif cmd == 'ping':
-            print conn.ping()
-        elif cmd == 'kill':
-            print conn.kill(*cmdargs)
-        elif cmd == 'shutdown':
-            print conn.shutdown()
-
-        conn.close()
+        try:
+            if cmd == 'status':
+                result = conn.status(*cmdargs)
+                for line in result.split('\n'):
+                    sys.stdout.write('%s\n' % line.rstrip())
+            elif cmd == 'submit':
+                submit(conn, *cmdargs)
+            elif cmd == 'ping':
+                print conn.ping()
+            elif cmd == 'kill':
+                print conn.kill(*cmdargs)
+            elif cmd == 'release':
+                print conn.release(*cmdargs)
+            elif cmd == 'shutdown':
+                print conn.shutdown()
+        finally:
+            conn.close()

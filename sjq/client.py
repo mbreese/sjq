@@ -64,11 +64,13 @@ class SJQClient(object):
 
         return line
  
+    def release(self, jobid):
+        return self.sendrecv("RELEASE %s" % jobid)
 
     def kill(self, jobid):
         return self.sendrecv("KILL %s" % jobid)
 
-    def submit(self, src, procs=None, mem=None, stderr=None, stdout=None, env=False, cwd=None, name=None, uid=None, gid=None, depends=None):
+    def submit(self, src, procs=None, mem=None, stderr=None, stdout=None, env=False, cwd=None, name=None, uid=None, gid=None, depends=None, hold=False):
         if env:
             envvals = []
             for k in os.environ:
@@ -108,6 +110,8 @@ class SJQClient(object):
             self.sock.sendall("NAME %s\r\n" % name)
         if depends:
             self.sock.sendall("DEPENDS %s\r\n" % depends)
+        if hold:
+            self.sock.sendall("HOLD\r\n")
 
         self.sock.sendall("SRC %s\r\n" % len(src))
         self.sock.sendall(src)

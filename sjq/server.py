@@ -147,6 +147,12 @@ class SJQServer(object):
         self.cond.notify()
         self.cond.release()
 
+    def release_job(self, jobid):
+        self.job_queue.update_job_state(jobid, 'Q')
+        self.cond.acquire()
+        self.cond.notify()
+        self.cond.release()
+
     def release_running_job(self, jobid):
         self.lock.acquire()
         if jobid in self.running_jobs:

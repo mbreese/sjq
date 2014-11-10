@@ -72,7 +72,7 @@ To submit a job:
     recv: ERROR error-message(s)\r\n
 
     Valid options:
-    MEM PROCS DEPENDS STDOUT STDERR ENV CWD NAME UID* GID*
+    MEM PROCS DEPENDS STDOUT STDERR ENV CWD NAME UID* GID* HOLD
 
       MEM   maximum memory required (100M, 2G, etc...) (G=1024^3, M=1024^2)
       PROCS number of CPUs this job requires
@@ -98,6 +98,11 @@ To submit a job:
               running as root and is *not* recommended (this is a large security
               hole, so you should only do this if you know what you are doing)
 
+      HOLD - Place a user-hold on the job. The user can release this this hold
+             with the "RELEASE" command. This job should be released within
+             the autoshutdown timeout or the server could be shutdown before
+             the job is released.
+
 
 To kill a job:
 
@@ -105,6 +110,11 @@ To kill a job:
     recv: OK\r\n
 
     Note: this returns OK even if a jobid doesn't exist or a job has already finished
+
+To release a job:
+
+    send: RELEASE jobid\r\n
+    recv: OK\r\n
 
 To stop the server:
 
