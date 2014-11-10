@@ -122,7 +122,8 @@ class SJQServer(object):
             self.lock.release()
 
             self.cond.acquire()
-            self.cond.wait(self.sched_time)
+            self.cond.wait()
+            #self.cond.wait(self.sched_time)
             self.cond.release()
 
         for jobid in list(self.running_jobs.keys()):
@@ -224,10 +225,20 @@ class SJQServer(object):
                     os.setpgrp()
 
             proc = subprocess.Popen([cmd], stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
+            # start a thread to wait for the proc to be done
+            t = threading.Thread(None, self.wait, None, (proc,))
+            t.daemon=True
+            t.start()
             return proc
 
         return None
 
+    def wait(self, proc):
+        # wait for the proc to be done, then notify the queue
+        proc.wait()
+        self.cond.acquire()
+        self.cond.notify()
+        self.cond.release()
 
     def start(self):
         if self._is_shutdown:

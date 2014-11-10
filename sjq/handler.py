@@ -81,7 +81,7 @@ class SJQHandler(SocketServer.BaseRequestHandler):
         try:
             while True:
                 line = sjq.support.readline(self.request)
-                self.server.sjq.debug("<<< " % line.rstrip())
+                self.server.sjq.debug("<<< %s" % line.rstrip())
                 if ' ' in line:
                     k,v = line.split(' ',1)
                 else:
@@ -112,7 +112,6 @@ class SJQHandler(SocketServer.BaseRequestHandler):
             src = self.request.recv(srclen)
             self.server.sjq.debug("<<< <%s bytes>" % len(src))
 
-
             cmd = None
             for line in [x.strip() for x in src.split('\n')]:
                 if line[:2] == '#!':
@@ -129,9 +128,10 @@ class SJQHandler(SocketServer.BaseRequestHandler):
                 if jobid:
                     self.send("OK %s" % jobid)
                 else:
-                    self.send("ERROR")
-        except:
-            self.send("ERROR")
+                    self.send("ERROR 1")
+        except Exception, e:
+            print e
+            self.send("ERROR 2")
 
     def kill(self, jobid):
         self.server.sjq.kill_job(jobid)
@@ -142,7 +142,7 @@ class SJQHandler(SocketServer.BaseRequestHandler):
         self.send("OK")
         
     def status(self, jobid=None):
-        #JOBID\tJOBNAME\t[RQHSFAK]\tDEPENDS\r\n
+        #JOBID\tJOBNAME\t[RQHSFAKU]\tDEPENDS\r\n
         output=[]
         for tup in self.server.sjq.job_queue.status(jobid):
             output.append('\t'.join([str(x) for x in tup]))
