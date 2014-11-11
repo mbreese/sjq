@@ -121,7 +121,6 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         for child_id in child_ids:
             self.abort_deps(child_id, orig_id)
 
-
     def abort_running(self):
         sql = "UPDATE job SET state='A' WHERE state='R'"
         conn = self.getconn()
@@ -152,6 +151,7 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         conn = self.getconn()
 
         promote_ids = []
+        aborted_ids = {}
         cur = conn.cursor()
         cur.execute(" SELECT a.jobid, jd.parentid, b.state FROM job a LEFT OUTER JOIN job_dep jd ON (a.jobid=jd.jobid) LEFT OUTER JOIN job b ON (jd.parentid=b.jobid) WHERE a.state='H'", )
 
@@ -166,6 +166,8 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
             last_jobid = row[0]
             if row[1] and row[2] != 'S':
                 last_passed = False
+            if row[1] and row[2] in ['A', 'F', 'K']:
+                aborted_ids[row[0]] = row[1]
         cur.close()
 
         if last_jobid and last_passed:
@@ -173,8 +175,13 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
 
         if promote_ids:
             for jobid in promote_ids:
-                conn.execute("UPDATE job SET state='Q' WHERE jobid=?", (jobid,))
-            conn.commit()
+                if not jobid in aborted_ids:
+                    conn.execute("UPDATE job SET state='Q' WHERE jobid=?", (jobid,))
+                conn.commit()
+
+        if aborted_ids:
+            for jobid in aborted_ids:
+                self.abort_deps(jobid, aborted_ids[jobid])
 
     def submit(self, job):
         keys = ['src', 'submitted', 'state']
