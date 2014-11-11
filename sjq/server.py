@@ -11,6 +11,7 @@ import threading
 import subprocess
 import SocketServer
 
+import sjq.client
 import sjq.config
 import handler
 import jobqueue
@@ -18,11 +19,39 @@ import jobqueue
 
 def start(verbose=False, args=None, daemon=False):
     srv = SJQServer(verbose, args)
-    if srv.config['sjq.daemon'] or daemon:
-        pidfile = None
-        if 'sjq.pidfile' in srv.config and srv.config['sjq.pidfile']:
-            pidfile = os.path.abspath(os.path.expanduser(srv.config['sjq.pidfile']))
+    socketfile = os.path.abspath(os.path.expanduser(srv.config['sjq.socket']))
 
+    if os.path.exists(socketfile):
+        try:
+            client = sjq.client.SJQClient()
+            resp = client.ping()
+            if resp and resp[:2] == 'OK':
+                if verbose:
+                    sys.stderr.write("SJQ server already running!\n")
+                return
+        except:
+            pass
+
+        os.unlink(socketfile)
+
+    pidfile = None
+    if 'sjq.pidfile' in srv.config and srv.config['sjq.pidfile']:
+        pidfile = os.path.abspath(os.path.expanduser(srv.config['sjq.pidfile']))
+
+        if os.path.exists(pidfile):
+            pid = -1
+            with open(pidfile) as f:
+                try:
+                    pid = int(f.read().strip())
+                except:
+                    pid = -1
+
+            if pid > 0:
+                os.kill(pid, signal.SIGKILL)
+
+            os.unlink(pidfile)
+
+    if srv.config['sjq.daemon'] or daemon:
         stderr = None
         if srv.config['sjq.logfile']:
             stderr = os.path.abspath(os.path.expanduser(srv.config['sjq.logfile']))
@@ -122,8 +151,10 @@ class SJQServer(object):
             self.lock.release()
 
             self.cond.acquire()
-            self.cond.wait()
-            #self.cond.wait(self.sched_time)
+
+            # we don't really need to cycle every [sched_time] sec, but
+            # just in case the notifications are missed, it's nice to verify
+            self.cond.wait(self.sched_time)
             self.cond.release()
 
         for jobid in list(self.running_jobs.keys()):

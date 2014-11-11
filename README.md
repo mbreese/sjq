@@ -39,7 +39,7 @@ values that are relevant to SJQ are:
     sjq.pidfile=path-to-pidfile       default: $HOME/.sjq.pid
     sjq.autoshutdown=[TF]             default: T
     sjq.schedtime=value-in-seconds    default: 60 - the time between scheduling runs
-    sjq.waittime=value-in-seconds     default: 60
+    sjq.waittime=value-in-seconds     default: 60 - the time to wait before autoshutdown
     sjq.maxprocs=max-procs            default: total CPUs in system
     sjq.maxmem=max-mem (ex: 8M, 2G)   default: None (memory use not restricted)
 
