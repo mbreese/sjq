@@ -74,8 +74,8 @@ class SJQClient(object):
         if env:
             envvals = []
             for k in os.environ:
-                envvals.append('%s=%s' % (k, os.environ[k]))
-            jobenv = ','.join(envvals)
+                envvals.append('%s=%s' % (k, os.environ[k].replace(';', '\\;')))
+            jobenv = ';'.join(envvals)
         else:
             jobenv = None
 

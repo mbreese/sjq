@@ -49,3 +49,21 @@ def readline(sock, timeout=30, verbose=False, logger=None):
 
     return s.rstrip('\r\n')
 
+
+def escaped_split(s, token, escape_char='\\'):
+    ar = []
+    buf = ''
+    last = ''
+    for ch in s:
+        if ch == token and last != escape_char:
+            ar.append(buf)
+            buf = ''
+        else:
+            buf+= ch
+            last = ch
+
+    if buf:
+        ar.append(buf)
+
+    return ar
+

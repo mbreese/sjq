@@ -235,7 +235,7 @@ class SJQServer(object):
 
             env = {}
             if 'env' in job and job['env']:
-                for pair in job['env'].split(','):
+                for pair in sjq.support.escaped_split(job['env'], ';'):
                     k,v = pair.split('=',1)
                     env[k]=v
 
