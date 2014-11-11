@@ -26,7 +26,7 @@ class JobQueue(object):
     def __init__(self, path):
         self.path = path
         
-        if not os.path.exists(path):
+        if not os.path.exists(path) or os.stat(path).st_size == 0:
             conn = sqlite3.connect(self.path)
             conn.executescript('''\
 CREATE TABLE job (jobid INTEGER PRIMARY KEY ASC AUTOINCREMENT, src TEXT, state TEXT, name TEXT NOT NULL DEFAULT 'sjqjob', submitted TIMESTAMP, started TIMESTAMP, finished TIMESTAMP, procs INTEGER, mem INTEGER, stdout TEXT, stderr TEXT, env TEXT, cwd TEXT, uid INTEGER, gid INTEGER, retcode INTEGER, abort_jobid INTEGER);
