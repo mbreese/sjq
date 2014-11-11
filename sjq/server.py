@@ -47,7 +47,10 @@ def start(verbose=False, args=None, daemon=False):
                     pid = -1
 
             if pid > 0:
-                os.kill(pid, signal.SIGKILL)
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except:
+                    pass
 
             os.unlink(pidfile)
 
