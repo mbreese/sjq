@@ -29,7 +29,7 @@ class JobQueue(object):
         if not os.path.exists(path):
             conn = sqlite3.connect(self.path)
             conn.executescript('''\
-CREATE TABLE job (jobid INTEGER PRIMARY KEY ASC AUTOINCREMENT, src TEXT, state TEXT, name TEXT NOT NULL DEFAULT 'sjqjob', submitted TIMESTAMP, started TIMESTAMP, finished TIMESTAMP, procs INTEGER, mem INTEGER, stdout TEXT, stderr TEXT, env TEXT, cwd TEXT, uid INTEGER, gid INTEGER, retcode INTEGER);
+CREATE TABLE job (jobid INTEGER PRIMARY KEY ASC AUTOINCREMENT, src TEXT, state TEXT, name TEXT NOT NULL DEFAULT 'sjqjob', submitted TIMESTAMP, started TIMESTAMP, finished TIMESTAMP, procs INTEGER, mem INTEGER, stdout TEXT, stderr TEXT, env TEXT, cwd TEXT, uid INTEGER, gid INTEGER, retcode INTEGER, abort_jobid INTEGER);
 CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
 ''')
             conn.commit()
@@ -98,14 +98,29 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         cur.close()
         return job
     
-    def abort_deps(self, jobid):
-        # TODO: make this work... child jobs with a failed parent *won't* get run,
-        #       but this should still flag them appropriately
-        pass
-        # sql="SELECT jobid, parentid from job_dep WHERE job_dep.parentid=?"
-        # conn = self.getconn()
-        # conn.execute(sql, (jobid,))
-        # conn.commit()
+    def abort_deps(self, jobid, orig_id=None):
+        if orig_id is None:
+            orig_id = jobid
+
+        sql = "UPDATE job SET state='A', abort_jobid=? WHERE jobid IN (SELECT jobid FROM job_dep WHERE parentid=?);"
+        args = (orig_id, jobid)
+
+        conn = self.getconn()
+        conn.execute(sql, args)
+        conn.commit()
+
+        child_ids = []
+
+        sql = 'SELECT jobid FROM job_dep WHERE parentid=?'
+        cur = conn.cursor()
+        cur.execute(sql, (jobid,))
+        for row in cur:
+            child_ids.append(row[0])
+        cur.close();
+
+        for child_id in child_ids:
+            self.abort_deps(child_id, orig_id)
+
 
     def abort_running(self):
         sql = "UPDATE job SET state='A' WHERE state='R'"
