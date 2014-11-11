@@ -432,5 +432,6 @@ def daemonize(stdin='/dev/null', stdout='/dev/null', stderr=None, pidfile=None):
                 os.unlink(pidfile)
             atexit.register(delpid)
             pid = str(os.getpid())
-            file(pidfile,'w+').write("%s\n" % pid)
-
+            f = open(pidfile,'w+')
+            f.write("%s\n" % pid)
+            f.close()
