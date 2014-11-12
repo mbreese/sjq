@@ -131,7 +131,7 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         if newstate == 'R':
             sql = "UPDATE job SET state=?, started=? WHERE jobid=? AND state = 'Q'"
             vals = (newstate, datetime.datetime.now(), jobid)
-        elif newstate in ['S', 'F', 'A']:
+        elif newstate in ['S', 'F']:
             sql = "UPDATE job SET state=?, finished=?, retcode=? WHERE jobid=? AND state='R'"
             vals = (newstate, datetime.datetime.now(), retcode, jobid)
         elif newstate == 'K':
@@ -153,7 +153,7 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         promote_ids = []
         aborted_ids = {}
         cur = conn.cursor()
-        cur.execute(" SELECT a.jobid, jd.parentid, b.state FROM job a LEFT OUTER JOIN job_dep jd ON (a.jobid=jd.jobid) LEFT OUTER JOIN job b ON (jd.parentid=b.jobid) WHERE a.state='H'", )
+        cur.execute("SELECT a.jobid, jd.parentid, b.state FROM job a LEFT OUTER JOIN job_dep jd ON (a.jobid=jd.jobid) LEFT OUTER JOIN job b ON (jd.parentid=b.jobid) WHERE a.state='H'")
 
         last_jobid = None
         last_passed = True
@@ -166,8 +166,8 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
             last_jobid = row[0]
             if row[1] and row[2] != 'S':
                 last_passed = False
-            if row[1] and row[2] in ['A', 'F', 'K']:
-                aborted_ids[row[0]] = row[1]
+                if row[2] in ['A', 'F', 'K']:
+                    aborted_ids[row[0]] = row[1]
         cur.close()
 
         if last_jobid and last_passed:
@@ -181,7 +181,10 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
 
         if aborted_ids:
             for jobid in aborted_ids:
+                conn.execute("UPDATE job SET state='A', abort_jobid=? WHERE jobid=?", (aborted_ids[jobid], jobid,))
                 self.abort_deps(jobid, aborted_ids[jobid])
+            conn.commit()
+            self.check_held_jobs()
 
     def submit(self, job):
         keys = ['src', 'submitted', 'state']
