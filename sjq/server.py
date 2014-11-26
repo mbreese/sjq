@@ -217,19 +217,29 @@ class SJQServer(object):
 
             if job['stdout']:
                 if job['stdout'][0] == '/':
-                    stdout = open(job['stdout'], 'w')
+                    stdout_path = job['stdout']
                 else:
-                    stdout = open(os.path.join(job['cwd'], job['stdout']), 'w')
+                    stdout_path = os.path.join(job['cwd'], job['stdout'])
             else:
-                stdout = open(os.path.join(job['cwd'], '%s.o%s' % (job['name'], job['jobid'])), 'w')
+                stdout_path = job['cwd']
+
+            if os.path.isdir(stdout_path):
+                stdout_path = os.path.join(stdout_path,'%s.o%s' % (job['name'], job['jobid']))
+
+            stdout = open(stdout_path, 'w')
 
             if job['stderr']:
                 if job['stderr'][0] == '/':
-                    stderr = open(job['stderr'], 'w')
+                    stderr_path = job['stderr']
                 else:
-                    stderr = open(os.path.join(job['cwd'], job['stderr']), 'w')
+                    stderr_path = os.path.join(job['cwd'], job['stderr'])
             else:
-                stderr = open(os.path.join(job['cwd'], '%s.e%s' % (job['name'], job['jobid'])), 'w')
+                stderr_path = job['cwd']
+
+            if os.path.isdir(stderr_path):
+                stderr_path = os.path.join(stderr_path,'%s.o%s' % (job['name'], job['jobid']))
+
+            stderr = open(stderr_path, 'w')
 
             env = None
 
