@@ -208,84 +208,85 @@ class SJQServer(object):
         self.lock.release()
 
     def spawn_job(self, job):
-        cmd = None
-        for line in [x.strip() for x in job['src'].split('\n')]:
-            if line[:2] == '#!':
-                cmd = line[2:]
-            break
+        # cmd = None
+        # for line in [x.strip() for x in job['src'].split('\n')]:
+        #     if line[:2] == '#!':
+        #         cmd = line[2:]
+        #     break
 
-        if not cmd:
-            self.log("Don't know how to run job: %s\n" % line)
+        # if not cmd:
+        #     self.log("Don't know how to run job: %s\n" % line)
+        #     return None
+
+        if not 'cwd' in job or not job['cwd']:
+            cwd = os.path.expanduser("~")
         else:
-            if not 'cwd' in job or not job['cwd']:
-                cwd = os.path.expanduser("~")
+            cwd = job['cwd']
+
+        if job['stdout']:
+            if job['stdout'][0] == '/':
+                stdout_path = job['stdout']
             else:
-                cwd = job['cwd']
+                stdout_path = os.path.join(job['cwd'], job['stdout'])
+        else:
+            stdout_path = job['cwd']
 
-            if job['stdout']:
-                if job['stdout'][0] == '/':
-                    stdout_path = job['stdout']
-                else:
-                    stdout_path = os.path.join(job['cwd'], job['stdout'])
+        if os.path.isdir(stdout_path):
+            stdout_path = os.path.join(stdout_path,'%s.o%s' % (job['name'], job['jobid']))
+
+        stdout = open(stdout_path, 'w')
+
+        if job['stderr']:
+            if job['stderr'][0] == '/':
+                stderr_path = job['stderr']
             else:
-                stdout_path = job['cwd']
+                stderr_path = os.path.join(job['cwd'], job['stderr'])
+        else:
+            stderr_path = job['cwd']
 
-            if os.path.isdir(stdout_path):
-                stdout_path = os.path.join(stdout_path,'%s.o%s' % (job['name'], job['jobid']))
+        if os.path.isdir(stderr_path):
+            stderr_path = os.path.join(stderr_path,'%s.e%s' % (job['name'], job['jobid']))
 
-            stdout = open(stdout_path, 'w')
+        stderr = open(stderr_path, 'w')
 
-            if job['stderr']:
-                if job['stderr'][0] == '/':
-                    stderr_path = job['stderr']
-                else:
-                    stderr_path = os.path.join(job['cwd'], job['stderr'])
-            else:
-                stderr_path = job['cwd']
+        env = None
 
-            if os.path.isdir(stderr_path):
-                stderr_path = os.path.join(stderr_path,'%s.e%s' % (job['name'], job['jobid']))
+        env = {}
+        if 'env' in job and job['env']:
+            for pair in sjq.support.escaped_split(job['env'], ';'):
+                k,v = pair.split('=',1)
+                env[k]=v
 
-            stderr = open(stderr_path, 'w')
+        env['JOB_ID'] = str(job['jobid'])
 
-            env = None
+        if not 'uid' in job:
+            job['uid'] = None
+        if not 'gid' in job:
+            job['gid'] = None
 
-            env = {}
-            if 'env' in job and job['env']:
-                for pair in sjq.support.escaped_split(job['env'], ';'):
-                    k,v = pair.split('=',1)
-                    env[k]=v
+        (fd, fname) = tempfile.mkstemp()
+        fobj = os.fdopen(fd, 'w')
+        fobj.write(job['src'])
+        fobj.close()
+        os.chmod(fname, stat.S_IRUSR | stat.S_IXUSR)
 
-            env['JOB_ID'] = str(job['jobid'])
+        if os.getuid() == 0:
+            def preexec_fn():
+                demote(job['uid'], job['gid'])
+                os.setpgrp()
+        else:
+            def preexec_fn():
+                os.setpgrp()
 
-            if not 'uid' in job:
-                job['uid'] = None
-            if not 'gid' in job:
-                job['gid'] = None
-
-            (fd, fname) = tempfile.mkstemp()
-            fobj = os.fdopen(fd, 'w')
-            fobj.write(job['src'])
-            fobj.close()
-            os.chmod(fname, stat.S_IRUSR | stat.S_IXUSR)
-
-            if os.getuid() == 0:
-                def preexec_fn():
-                    demote(job['uid'], job['gid'])
-                    os.setpgrp()
-            else:
-                def preexec_fn():
-                    os.setpgrp()
-
-            try:
-                proc = subprocess.Popen([cmd, fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
-                # start a thread to wait for the proc to be done
-                t = threading.Thread(None, self.wait, None, (proc, fname))
-                t.daemon=True
-                t.start()
-                return proc
-            except:
-                pass
+        try:
+            proc = subprocess.Popen([fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
+            # start a thread to wait for the proc to be done
+            t = threading.Thread(None, self.wait, None, (proc, fname))
+            t.daemon=True
+            t.start()
+            return proc
+        except:
+            pass
 
         return None
 
