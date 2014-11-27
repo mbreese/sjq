@@ -80,7 +80,7 @@ class SJQClient(object):
             jobenv = None
 
         if not cwd:
-            cwd = os.getcwd()
+            cwd = os.path.abspath(os.getcwd())
 
         if uid is None:
             uid = os.getuid()
