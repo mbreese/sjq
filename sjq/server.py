@@ -257,7 +257,8 @@ class SJQServer(object):
             if not 'gid' in job:
                 job['gid'] = None
 
-            (fobj, fname) = tempfile.mkstemp()
+            (fd, fname) = tempfile.mkstemp()
+            fobj = os.fdopen(fd)
             fobj.write(job['src'])
             fobj.close()
             os.chmod(fname, stat.S_IRUSR | stat.S_IXUSR)
