@@ -1,5 +1,6 @@
 import os
 import sys
+import stat
 import time
 import atexit
 import select
@@ -256,9 +257,10 @@ class SJQServer(object):
             if not 'gid' in job:
                 job['gid'] = None
 
-            stdin = tempfile.TemporaryFile()
-            stdin.write(job['src'])
-            stdin.seek(0)
+            (fobj, fname) = tempfile.mkstemp()
+            fobj.write(job['src'])
+            fobj.close()
+            os.chmod(fname, stat.S_IRUSR | stat.S_IXUSR)
 
             if os.getuid() == 0:
                 def preexec_fn():
@@ -268,18 +270,19 @@ class SJQServer(object):
                 def preexec_fn():
                     os.setpgrp()
 
-            proc = subprocess.Popen([cmd], stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
+            proc = subprocess.Popen([cmd, fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
             # start a thread to wait for the proc to be done
-            t = threading.Thread(None, self.wait, None, (proc,))
+            t = threading.Thread(None, self.wait, None, (proc, fname))
             t.daemon=True
             t.start()
             return proc
 
         return None
 
-    def wait(self, proc):
+    def wait(self, proc, fname):
         # wait for the proc to be done, then notify the queue
         proc.wait()
+        os.unlink(fname)
         self.cond.acquire()
         self.cond.notify()
         self.cond.release()
