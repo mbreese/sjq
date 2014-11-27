@@ -271,12 +271,15 @@ class SJQServer(object):
                 def preexec_fn():
                     os.setpgrp()
 
-            proc = subprocess.Popen([cmd, fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
-            # start a thread to wait for the proc to be done
-            t = threading.Thread(None, self.wait, None, (proc, fname))
-            t.daemon=True
-            t.start()
-            return proc
+            try:
+                proc = subprocess.Popen([cmd, fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
+                # start a thread to wait for the proc to be done
+                t = threading.Thread(None, self.wait, None, (proc, fname))
+                t.daemon=True
+                t.start()
+                return proc
+            except:
+                pass
 
         return None
 
