@@ -238,7 +238,7 @@ class SJQServer(object):
                 stderr_path = job['cwd']
 
             if os.path.isdir(stderr_path):
-                stderr_path = os.path.join(stderr_path,'%s.o%s' % (job['name'], job['jobid']))
+                stderr_path = os.path.join(stderr_path,'%s.e%s' % (job['name'], job['jobid']))
 
             stderr = open(stderr_path, 'w')
 
