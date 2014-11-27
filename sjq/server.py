@@ -137,6 +137,12 @@ class SJQServer(object):
                     self.running_jobs[job['jobid']] = (proc, job)
                     self.lock.release()
                     continue
+                else:
+                    self.log("JOB: %s FAILED TO START" % (job['jobid']))
+                    self.job_queue.update_job_state(job['jobid'], 'F', -1)
+                    self.lock.release()
+                    continue
+
 
             self.job_queue.close()  # close the connection for the thread, if opened
 
