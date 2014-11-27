@@ -258,7 +258,7 @@ class SJQServer(object):
                 job['gid'] = None
 
             (fd, fname) = tempfile.mkstemp()
-            fobj = os.fdopen(fd)
+            fobj = os.fdopen(fd, 'w')
             fobj.write(job['src'])
             fobj.close()
             os.chmod(fname, stat.S_IRUSR | stat.S_IXUSR)
