@@ -139,7 +139,7 @@ class SJQServer(object):
                     continue
                 else:
                     self.log("JOB: %s FAILED TO START" % (job['jobid']))
-                    self.job_queue.update_job_state(job['jobid'], 'F', -1)
+                    self.job_queue.update_job_state(job['jobid'], 'E', -1)
                     self.lock.release()
                     continue
 

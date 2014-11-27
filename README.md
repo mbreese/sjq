@@ -128,10 +128,10 @@ To list job status:
     send: STATUS {JOBID}\r\n
     recv: OK bytes\r\n
     recv: <bytes of status message>
-          JOBID\tJOBNAME\t[RQHSFAK]\tDEPENDS\r\n
+          JOBID\tJOBNAME\t[RQHSFAKUE]\tDEPENDS\r\n
           (one line for each job)
 
 If "JOBID" is not given, then all jobs, including jobs that have finished
 (successfully or not) will be listed.
 
-[RQHSFAKU] - running, queued, holding, success, fail, abort (parent job failed), killed, user-hold
+[RQHSFAKUE] - running, queued, holding, success, fail, abort (parent job failed), killed, user-hold, error (issue spawning job)

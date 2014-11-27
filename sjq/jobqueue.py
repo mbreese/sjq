@@ -128,16 +128,26 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
         conn.commit()
 
     def update_job_state(self, jobid, newstate, retcode=None):
+        now = datetime.datetime.now()
+
         if newstate == 'R':
+            # Running
             sql = "UPDATE job SET state=?, started=? WHERE jobid=? AND state = 'Q'"
-            vals = (newstate, datetime.datetime.now(), jobid)
+            vals = (newstate, now, jobid)
+        elif newstate == 'E':
+            # Error on spawn
+            sql = "UPDATE job SET state=?, started=?, finished=?, retcode=-1 WHERE jobid=? AND state='Q'"
+            vals = (newstate, now, now, jobid)
         elif newstate in ['S', 'F']:
+            # Success / failure
             sql = "UPDATE job SET state=?, finished=?, retcode=? WHERE jobid=? AND state='R'"
-            vals = (newstate, datetime.datetime.now(), retcode, jobid)
+            vals = (newstate, now, retcode, jobid)
         elif newstate == 'K':
+            # Killed
             sql = "UPDATE job SET state=?, finished=? WHERE jobid=? AND (state='R' OR state='Q' OR state='H')"
-            vals = (newstate, datetime.datetime.now(), jobid)
+            vals = (newstate, now, jobid)
         elif newstate == 'H':
+            # Hold
             sql = "UPDATE job SET state=? WHERE jobid=? AND state='U'"
             vals = (newstate, jobid)
         else:
@@ -166,7 +176,7 @@ CREATE TABLE job_dep(jobid INTEGER, parentid INTEGER);
             last_jobid = row[0]
             if row[1] and row[2] != 'S':
                 last_passed = False
-                if row[2] in ['A', 'F', 'K']:
+                if row[2] in ['A', 'F', 'K', 'E']:
                     aborted_ids[row[0]] = row[1]
         cur.close()
 
