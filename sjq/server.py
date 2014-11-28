@@ -279,7 +279,7 @@ class SJQServer(object):
                 os.setpgrp()
 
         try:
-            proc = subprocess.Popen([fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn)
+            proc = subprocess.Popen([fname], stdout=stdout, stderr=stderr, cwd=cwd, env=env, preexec_fn=preexec_fn, shell=True)
             # start a thread to wait for the proc to be done
             t = threading.Thread(None, self.wait, None, (proc, fname))
             t.daemon=True
