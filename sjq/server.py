@@ -3,6 +3,7 @@ import sys
 import stat
 import time
 import atexit
+import base64
 import select
 import signal
 import socket
@@ -252,10 +253,11 @@ class SJQServer(object):
         env = None
 
         env = {}
+        # TODO: handle env vars that span multiple lines
         if 'env' in job and job['env']:
-            for pair in sjq.support.escaped_split(job['env'], ';'):
+            for pair in job['env'].split(';'):
                 k,v = pair.split('=',1)
-                env[k]=v
+                env[k]= base64.b64decode(v)
 
         env['JOB_ID'] = str(job['jobid'])
 

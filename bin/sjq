@@ -33,6 +33,8 @@ def submit(conn, *args):
     for arg in args:
         if arg == '-env':
             kwargs['env'] = True
+        elif arg == '-no-env':
+            kwargs['env'] = False
         elif last:
             kwargs[last] = arg
             last = None

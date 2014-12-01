@@ -1,5 +1,6 @@
 import os
 import sys
+import base64
 import socket
 import sjq.config
 import sjq.support
@@ -74,7 +75,7 @@ class SJQClient(object):
         if env:
             envvals = []
             for k in os.environ:
-                envvals.append('%s=%s' % (k, os.environ[k].replace(';', '\\;')))
+                envvals.append('%s=%s' % (k, base64.b64encode(os.environ[k])))
             jobenv = ';'.join(envvals)
         else:
             jobenv = None
