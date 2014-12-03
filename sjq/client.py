@@ -65,11 +65,13 @@ class SJQClient(object):
 
         return line
  
-    def release(self, jobid):
-        return self.sendrecv("RELEASE %s" % jobid)
+    def release(self, *jobids):
+        for jobid in jobids:
+            return self.sendrecv("RELEASE %s" % jobid)
 
-    def kill(self, jobid):
-        return self.sendrecv("KILL %s" % jobid)
+    def kill(self, *jobids):
+        for jobid in jobids:
+            return self.sendrecv("KILL %s" % jobid)
 
     def submit(self, src, procs=None, mem=None, stderr=None, stdout=None, env=False, cwd=None, name=None, uid=None, gid=None, depends=None, hold=False):
         if env:
